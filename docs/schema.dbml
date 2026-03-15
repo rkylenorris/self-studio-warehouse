@@ -1,0 +1,89 @@
+// Phase 1: Normalized Adaptive PostgreSQL Schema
+Project Self_Studio_Warehouse {
+  database_type: 'PostgreSQL'
+  Note: 'Relational warehouse for cross-dimension health data. Adaptive EAV structure for Daylio.'
+}
+
+// --- MIND SCHEMA (Daylio Data) ---
+
+Table mind.dim_mood_groups {
+  id int [pk] // json: mood_groups[].id
+  group_name varchar [not null] // json: mood_groups[].name
+  base_value int // json: mood_groups[].value
+}
+
+Table mind.dim_moods {
+  id int [pk] // json: customMoods[].id
+  mood_group_id int [ref: > mind.dim_mood_groups.id] 
+  custom_name varchar [not null] // json: customMoods[].custom_name
+  mood_value int // json: customMoods[].mood_value
+  is_verified boolean [default: false] 
+  Note: 'is_verified=false triggers self-registration alerts.'
+}
+
+Table mind.dim_tag_groups {
+  id int [pk] // json: tag_groups[].id
+  group_name varchar [not null] // json: tag_groups[].name
+}
+
+Table mind.dim_tags {
+  id int [pk] // json: tags[].id
+  tag_name varchar [not null] // json: tags[].name
+  tag_group_id int [ref: > mind.dim_tag_groups.id]
+  is_verified boolean [default: true]
+}
+
+Table mind.dim_scales {
+  id int [pk] // json: dayEntries[].scaleValues[].id_scale
+  internal_label varchar [note: "User defined (e.g., 'Energy'). Defaults to 'Scale {id}'"]
+  is_active boolean [default: true]
+  Note: 'Registry for dynamic metrics like Anxiety or Focus.'
+}
+
+Table mind.fact_day_entries {
+  id int [pk] // json: dayEntries[].id
+  entry_at timestamptz [not null] // json: dayEntries[].datetime
+  system_at timestamptz [not null] // json: dayEntries[].createdAt
+  mood_id int [ref: > mind.dim_moods.id]
+  reporting_lag_interval interval // Calculated: system_at - entry_at
+  note_title text 
+  note_content text 
+  is_favorite boolean [default: false]
+  metadata jsonb // For preserving any "extra" fields detected by Pydantic
+}
+
+// --- BRIDGE TABLES (Adaptive Multi-value Handling) ---
+
+Table mind.entry_tag_bridge {
+  entry_id int [ref: > mind.fact_day_entries.id]
+  tag_id int [ref: > mind.dim_tags.id]
+  
+  indexes {
+    (entry_id, tag_id) [pk]
+  }
+}
+
+Table mind.entry_scale_values {
+  id bigserial [pk]
+  entry_id int [ref: > mind.fact_day_entries.id]
+  scale_id int [ref: > mind.dim_scales.id]
+  score_value float8 [not null]
+  
+  Note: 'EAV structure allows new Daylio scales to be recorded immediately.'
+}
+
+// --- GOAL TRACKING ---
+
+Table mind.dim_goals {
+  id int [pk]
+  goal_name varchar
+  reminder_time time
+  is_active boolean
+}
+
+Table mind.fact_goal_entries {
+  id int [pk]
+  goal_id int [ref: > mind.dim_goals.id]
+  occurrence_at timestamptz
+  system_at timestamptz
+}

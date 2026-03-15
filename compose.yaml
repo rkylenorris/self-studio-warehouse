@@ -1,0 +1,16 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: health_dimensions_db
+    environment:
+      POSTGRES_USER: kyle_dev
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: health_warehouse
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./sql/init:/docker-entrypoint-initdb.d # Runs your DBML-based schema on startup
+
+volumes:
+  postgres_data:
