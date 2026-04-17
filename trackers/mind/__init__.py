@@ -1,1 +1,1 @@
-from .daylio import DaylioTracker
+from .daylio import DaylioTracker, OldDataException

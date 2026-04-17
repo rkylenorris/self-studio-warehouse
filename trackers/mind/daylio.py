@@ -12,6 +12,10 @@ from functools import lru_cache
 from ..tracker_tools import get_hash, get_latest_file
 
 
+class OldDataException(Exception):
+    pass
+
+
 @dataclass
 class ZippedBackup:
     hash: str
@@ -21,9 +25,6 @@ class ZippedBackup:
 class DaylioTracker(BaseMindTracker):
 
     backup_name_pattern: str = 'backup*.daylio'
-    last_backup_path: Path
-    new_archive_hash: str
-    new_json_hash: str
 
     def __init__(self, backup_path: Path, name: str = "Daylio") -> None:
         if not backup_path.exists:
@@ -34,11 +35,21 @@ class DaylioTracker(BaseMindTracker):
         self.hash_json_path: Path = self.hashes_path / "daylio_json.txt"
 
     def get_data(self):
+        print("Looking for most recent backup archive...")
         most_recent_backup: Path = get_latest_file(self.data_source,
                                                    self.backup_name_pattern)
 
-        if most_recent_backup != None and self._is_new(most_recent_backup):
-            self.ingest_data()
+        if most_recent_backup != None:
+            print(f"found most recent backup: {most_recent_backup.name}")
+            if self._is_new(most_recent_backup):
+                print(f"{most_recent_backup.name} is new")
+                return self
+            else:
+                raise OldDataException(
+                    f"{most_recent_backup.name} does not contain new data.")
+        else:
+            raise FileNotFoundError(
+                f"No files found matching pattern: {self.backup_name_pattern}")
 
     @lru_cache
     def _get_zipped_backup(self, path: Path) -> ZippedBackup:
@@ -53,41 +64,45 @@ class DaylioTracker(BaseMindTracker):
         self._write_hash(json_hash, self.hash_json_path.name)
 
     def _is_new(self, backup_archive: Path) -> bool:
+        is_new = False
+        zipped_backup: ZippedBackup = self._get_zipped_backup(backup_archive)
+        archive_hash: str = get_hash(
+            backup_archive.read_bytes())
         if not self.hash_archive_path.exists() and not self.hash_json_path.exists():
-            zipped_backup = self._get_zipped_backup(backup_archive)
-            self._write_new_hashes(archive_hash=get_hash(
-                backup_archive.read_bytes()), json_hash=zipped_backup.hash)
             self.data = zipped_backup.data
-            return True
+            is_new = True
         elif self.hash_archive_path.exists():
-            last_hash = self.hash_archive_path.read_text().strip()
-            current_hash = get_hash(backup_archive.read_bytes())
-            archive_hashes_match = current_hash == last_hash
 
-            zipped_backup = self._get_zipped_backup(backup_archive)
+            last_hash = self.hash_archive_path.read_text().strip()
+            archive_hashes_match = archive_hash == last_hash
 
             if archive_hashes_match and self.hash_json_path.exists():
+
                 last_json_hash = self.hash_json_path.read_bytes()
 
                 new_json = not (last_json_hash == zipped_backup.hash)
+
                 if new_json:
                     self.data = zipped_backup.data
-                    self._write_new_hashes(current_hash, zipped_backup.hash)
-                return new_json
+
+                is_new = new_json
             else:
                 self.data = zipped_backup.data
-                self._write_new_hashes(current_hash, zipped_backup.hash)
-                return True
+                is_new = True
         else:
-            zipped_backup = self._get_zipped_backup(backup_archive)
             self.data = zipped_backup.data
-            self._write_new_hashes(archive_hash=get_hash(
-                backup_archive.read_bytes()), json_hash=zipped_backup.hash)
-            return True
+            is_new = True
+
+        if is_new:
+            self._write_new_hashes(
+                archive_hash=archive_hash, json_hash=zipped_backup.hash)
+        return is_new
 
     def ingest_data(self) -> None:
         data_text = self.data.decode("utf-8")
         json = oj.loads(data_text)
         json_bytes = oj.dumps(json, option=oj.OPT_INDENT_2)
-        with self.ingested_path.open(mode="wb", encoding="utf-8") as j:
+        print(f"Saving data to '{self.ingested_file.name}...")
+        with self.ingested_file.open(mode="wb", encoding="utf-8") as j:
             j.write(json_bytes)
+        print("Saved.")
