@@ -4,7 +4,7 @@ from zipfile import ZipFile
 from base64 import b64decode
 from pathlib import Path
 from hashlib import sha256
-from base_mind import BaseMindTracker, DataSourceType
+from .base_mind import BaseMindTracker, DataSourceType
 from base64 import b64decode
 from dataclasses import dataclass
 from functools import lru_cache
@@ -54,7 +54,7 @@ class DaylioTracker(BaseMindTracker):
     @lru_cache
     def _get_zipped_backup(self, path: Path) -> ZippedBackup:
         with ZipFile(path.absolute(), "r") as z:
-            with z.open("backup.json") as f:
+            with z.open("backup.daylio") as f:
                 data = b64decode(f.read())
                 current_json_hash = get_hash(f.read())
         return ZippedBackup(hash=current_json_hash, data=data)
@@ -101,8 +101,11 @@ class DaylioTracker(BaseMindTracker):
     def ingest_data(self) -> None:
         data_text = self.data.decode("utf-8")
         json = oj.loads(data_text)
+        with open("data/ingested/daylio_schema.txt", "a") as s:
+            for k in json.keys():
+                s.write(k.strip())
         json_bytes = oj.dumps(json, option=oj.OPT_INDENT_2)
         print(f"Saving data to '{self.ingested_file.name}...")
-        with self.ingested_file.open(mode="wb", encoding="utf-8") as j:
+        with self.ingested_file.open(mode="wb") as j:
             j.write(json_bytes)
         print("Saved.")
