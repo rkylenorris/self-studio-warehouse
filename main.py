@@ -1,5 +1,7 @@
 from pathlib import Path
 from trackers.mind import DaylioTracker, OldDataException
+from trackers import flatten_json
+import orjson
 
 
 def main():
@@ -14,6 +16,18 @@ def main():
         print(f"{e}")
     finally:
         print("Finished.")
+
+    print("Flattening Json...")
+    daylio_json_path = Path("data/ingested/daylio.json")
+    flattened_path = Path("data/flat_daylio.json")
+    json = orjson.loads(daylio_json_path.read_bytes())
+
+    flattened_json = flatten_json(json, max_depth=4)  # not working
+
+    with flattened_path.open("wb") as f:
+        f.write(orjson.dumps(flattened_json, option=orjson.OPT_INDENT_2))
+
+    print("Finished.")
 
 
 if __name__ == "__main__":

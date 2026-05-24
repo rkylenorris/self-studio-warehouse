@@ -17,3 +17,25 @@ def get_hash(data: bytes) -> str:
         return sha256(data).hexdigest().strip()
     else:
         raise ValueError("Parameter 'data' must be of type bytes.")
+
+
+def flatten_json(json: object, exclude: list[str] | None = None, max_depth: int = 1, current_depth=0, path: str = "") -> dict:
+
+    result = {}
+
+    if current_depth == max_depth:
+        result[path] = json
+    elif json is dict:
+        for key, val in json.items():
+            new_path = f"{path}.{key}"
+            result.update(flatten_json(val, max_depth=max_depth,
+                          current_depth=current_depth+1, path=new_path))
+    elif json is list:
+        for i, val in enumerate(json):
+            new_path = f"{path}.{i}"
+            result.update(flatten_json(val, max_depth=max_depth,
+                          current_depth=current_depth+1, path=new_path))
+    else:
+        result[path] = json
+
+    return result
